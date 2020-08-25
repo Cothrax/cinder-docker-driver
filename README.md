@@ -79,6 +79,7 @@ Configuration options are stored in json format in config.json, the minimum requ
 - HostUUID (root disk UUID)
 - InitiatorIP (default interface IP)
 - Region (defaults to "RegionOne")
+- Timeout (5 secs): Timout when waiting for iSCSI connection
 
 Example config with additional options:
 
@@ -92,7 +93,8 @@ Example config with additional options:
   "MountPoint": "/mnt/cvols",
   "InitiatorIFace": "/dev/eth4",
   "HostUUID": "219b0670-a214-4281-8424-5bb3be109ddd",
-  "InitiatorIP": "192.168.4.201"
+  "InitiatorIP": "192.168.4.201",
+  "Timeout": 20
 }
 ```
 ## Start the daemon

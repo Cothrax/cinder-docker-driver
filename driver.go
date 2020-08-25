@@ -37,6 +37,7 @@ type Config struct {
 	InitiatorIP string
 	DomainName  string
 	Region	    string
+	Timeout     int
 }
 
 type CinderDriver struct {
@@ -56,6 +57,8 @@ type ConnectorInfo struct {
 	VolumeID   string `mapstructure:"volume_id"`
 	TgtLun     int    `mapstructure:"target_lun"`
 	Encrypted  bool   `mapstructure:"encrypted"`
+
+	TgtPortals []string `mapstructure:"target_portals"`
 }
 
 type ISCSITarget struct {
@@ -94,6 +97,10 @@ func processConfig(cfg string) (Config, error) {
 		conf.HostUUID, _ = getRootDiskUUID()
 		log.Infof("Set node UUID to: %s", conf.HostUUID)
 	}
+	if conf.Timeout == 0 {
+		conf.Timeout = 5
+	}
+	
 	conf.InitiatorIP, _ = getIPv4ForIFace(conf.InitiatorIFace)
 	log.Infof("Using config file: %s", cfg)
 	log.Infof("Set InitiatorIFace to: %s", conf.InitiatorIFace)
@@ -102,6 +109,7 @@ func processConfig(cfg string) (Config, error) {
 	log.Infof("Set Endpoint to: %s", conf.Endpoint)
 	log.Infof("Set Username to: %s", conf.Username)
 	log.Infof("Set TenantID to: %s", conf.TenantID)
+	log.Infof("Set Timeout to: %d s", conf.Timeout)
 	return conf, nil
 }
 
@@ -355,7 +363,17 @@ func (d CinderDriver) Mount(r *volume.MountRequest) (*volume.MountResponse, erro
 	data := response.Body.(map[string]interface{})["connection_info"].(map[string]interface{})["data"]
 	var con ConnectorInfo
 	mapstructure.Decode(data, &con)
-	path, device, err := attachVolume(&con, "default")
+
+	log.Debug("iscsi target portals: ", con.TgtPortals)
+	rPortal := getReachablePortals(&con)
+	if rPortal == "" {
+		log.Error("Found no reachable iscsi portals")
+	} else {
+		con.TgtPortal = rPortal
+	}
+
+	path, device, err := attachVolume(&con, "default", d.Conf.Timeout)
+	
 	log.Debug("iSCSI connection done")
 	if path == "" || device == "" && err == nil {
 		log.Error("Missing path or device, but err not set?")
@@ -522,7 +540,7 @@ func iscsiDetachVolume(tgt string, portal string) (err error) {
 	return
 }
 
-func attachVolume(c *ConnectorInfo, iface string) (path, device string, err error) {
+func attachVolume(c *ConnectorInfo, iface string, timeout int) (path, device string, err error) {
 	log.Debugf("Connector is: %+v", c)
 	path = "/dev/disk/by-path/ip-" + c.TgtPortal + "-iscsi-" + c.TgtIQN + "-lun-" + strconv.Itoa(c.TgtLun)
 
@@ -544,7 +562,7 @@ func attachVolume(c *ConnectorInfo, iface string) (path, device string, err erro
 		log.Error(err)
 		return path, device, err
 	}
-	if waitForPathToExist(path, 5) {
+	if waitForPathToExist(path, timeout) {
 		device = strings.TrimSpace(getDeviceFileFromIscsiPath(path))
 		log.Debugf("Attached volume at (path, devfile): %s, %s", path, device)
 		return path, device, nil

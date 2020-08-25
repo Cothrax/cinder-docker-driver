@@ -313,3 +313,46 @@ func getRootDiskUUID() (string, error) {
 	uuid = strings.Replace(uuid, "\"", "", -1)
 	return string(uuid), nil
 }
+
+func isPortalReachable(portal string) bool {
+	// hostName := strings.Split(portal, ":")[0]
+	// portNum := "80"
+	seconds := 5
+	timeOut := time.Duration(seconds) * time.Second
+	
+	_, err := net.DialTimeout("tcp", portal, timeOut)
+	
+	if err != nil {
+		log.Debugf("Portal %s is unreachable. error: %s", portal, err)
+		return false
+	}
+
+	log.Debugf("Portal %s is reachable.", portal)
+	return true
+}
+
+func SplitAny(s string, seps string) []string {
+    splitter := func(r rune) bool {
+        return strings.ContainsRune(seps, r)
+    }
+    return strings.FieldsFunc(s, splitter)
+}
+
+func getReachablePortals(c *ConnectorInfo) string {
+	if isPortalReachable(c.TgtPortal) {
+		return c.TgtPortal
+	}
+
+	if len(c.TgtPortals) >= 2 {
+		strs := strings.Split(c.TgtPortals[1], ":")
+		ipAddrsStr, port := strs[0], strs[1]
+		ipAddrs := SplitAny(ipAddrsStr, "[] ,")
+		for _, ipAddr := range ipAddrs {
+			var portal string = ipAddr + ":" + port
+			if isPortalReachable(portal) {
+				return portal
+			}
+		}
+	}
+	return ""
+}
